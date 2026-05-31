@@ -7,19 +7,27 @@ import (
 	"strconv"
 )
 
-// Handler returns the service's HTTP handler.
+// Handler returns the service's HTTP handler. The /api/ subtree is wrapped
+// by withIdentity (plan D6): identity is read from the trusted X-CWB-*
+// headers once, 401 is returned centrally for requests that didn't transit
+// the gateway, and handlers consume identityFromContext + keep only their
+// scope checks.
 func (s *Service) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+	root := http.NewServeMux()
+	root.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "commonplace"})
 	})
-	mux.HandleFunc("POST /api/knowledge", s.handleStore)
-	mux.HandleFunc("GET /api/knowledge/search", s.handleSearch)
-	mux.HandleFunc("GET /api/knowledge", s.handleList)
-	mux.HandleFunc("GET /api/knowledge/{id}", s.handleGet)
-	mux.HandleFunc("PATCH /api/knowledge/{id}", s.handleUpdate)
-	mux.HandleFunc("DELETE /api/knowledge/{id}", s.handleDelete)
-	return mux
+
+	api := http.NewServeMux()
+	api.HandleFunc("POST /api/knowledge", s.handleStore)
+	api.HandleFunc("GET /api/knowledge/search", s.handleSearch)
+	api.HandleFunc("GET /api/knowledge", s.handleList)
+	api.HandleFunc("GET /api/knowledge/{id}", s.handleGet)
+	api.HandleFunc("PATCH /api/knowledge/{id}", s.handleUpdate)
+	api.HandleFunc("DELETE /api/knowledge/{id}", s.handleDelete)
+
+	root.Handle("/api/", withIdentity(api))
+	return root
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -40,11 +48,7 @@ type storeBody struct {
 }
 
 func (s *Service) handleStore(w http.ResponseWriter, r *http.Request) {
-	id := identityFromRequest(r)
-	if id.Subject == "" || id.Org == "" {
-		writeErr(w, http.StatusUnauthorized, "missing identity")
-		return
-	}
+	id := identityFromContext(r.Context())
 	if !id.hasScope(scopeWrite) {
 		writeErr(w, http.StatusForbidden, "knowledge:write required")
 		return
@@ -67,11 +71,7 @@ func (s *Service) handleStore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleSearch(w http.ResponseWriter, r *http.Request) {
-	id := identityFromRequest(r)
-	if id.Subject == "" || id.Org == "" {
-		writeErr(w, http.StatusUnauthorized, "missing identity")
-		return
-	}
+	id := identityFromContext(r.Context())
 	if !id.hasScope(scopeRead) {
 		writeErr(w, http.StatusForbidden, "knowledge:read required")
 		return
@@ -110,11 +110,7 @@ func statusFor(err error) (int, string) {
 }
 
 func (s *Service) handleGet(w http.ResponseWriter, r *http.Request) {
-	id := identityFromRequest(r)
-	if id.Subject == "" || id.Org == "" {
-		writeErr(w, http.StatusUnauthorized, "missing identity")
-		return
-	}
+	id := identityFromContext(r.Context())
 	if !id.hasScope(scopeRead) {
 		writeErr(w, http.StatusForbidden, "knowledge:read required")
 		return
@@ -129,11 +125,7 @@ func (s *Service) handleGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleList(w http.ResponseWriter, r *http.Request) {
-	id := identityFromRequest(r)
-	if id.Subject == "" || id.Org == "" {
-		writeErr(w, http.StatusUnauthorized, "missing identity")
-		return
-	}
+	id := identityFromContext(r.Context())
 	if !id.hasScope(scopeRead) {
 		writeErr(w, http.StatusForbidden, "knowledge:read required")
 		return
@@ -157,11 +149,7 @@ type updateBody struct {
 }
 
 func (s *Service) handleUpdate(w http.ResponseWriter, r *http.Request) {
-	id := identityFromRequest(r)
-	if id.Subject == "" || id.Org == "" {
-		writeErr(w, http.StatusUnauthorized, "missing identity")
-		return
-	}
+	id := identityFromContext(r.Context())
 	if !id.hasScope(scopeWrite) {
 		writeErr(w, http.StatusForbidden, "knowledge:write required")
 		return
@@ -183,11 +171,7 @@ func (s *Service) handleUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleDelete(w http.ResponseWriter, r *http.Request) {
-	id := identityFromRequest(r)
-	if id.Subject == "" || id.Org == "" {
-		writeErr(w, http.StatusUnauthorized, "missing identity")
-		return
-	}
+	id := identityFromContext(r.Context())
 	if !id.hasScope(scopeWrite) {
 		writeErr(w, http.StatusForbidden, "knowledge:write required")
 		return
