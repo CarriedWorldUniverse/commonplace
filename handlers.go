@@ -25,6 +25,7 @@ func (s *Service) Handler() http.Handler {
 	api.HandleFunc("GET /api/knowledge/{id}", s.handleGet)
 	api.HandleFunc("PATCH /api/knowledge/{id}", s.handleUpdate)
 	api.HandleFunc("DELETE /api/knowledge/{id}", s.handleDelete)
+	api.HandleFunc("DELETE /api/org", s.handleOrgPurge)
 
 	root.Handle("/api/", withIdentity(api))
 	return root
@@ -182,4 +183,18 @@ func (s *Service) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Service) handleOrgPurge(w http.ResponseWriter, r *http.Request) {
+	id := identityFromContext(r.Context())
+	if !id.hasScope("org:purge") {
+		writeErr(w, http.StatusForbidden, "missing scope org:purge")
+		return
+	}
+	n, err := s.DeleteByOrg(r.Context(), id.Org)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "purge failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"purged": id.Org, "entries": n})
 }
