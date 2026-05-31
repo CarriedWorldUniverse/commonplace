@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: commonplace
+  namespace: cwb
+  labels:
+    app: commonplace
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: commonplace
+  template:
+    metadata:
+      labels:
+        app: commonplace
+    spec:
+      containers:
+        - name: commonplace
+          image: localhost/commonplace:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8101
+          env:
+            - name: COMMONPLACE_ADDR
+              value: ":8101"
+            - name: COMMONPLACE_DB
+              value: "/var/lib/cwb/commonplace.db"
+            # Embedding model reachability. Point at the ollama endpoint
+            # reachable from the cwb namespace. The MVP default model is
+            # nomic-embed-text (dim 768); changing the model is a one-way
+            # door requiring a full re-embed (plan D2).
+            - name: COMMONPLACE_EMBED_PROVIDER
+              value: "ollama"
+            - name: COMMONPLACE_EMBED_URL
+              value: "http://ollama.cwb.svc.cluster.local:11434"
+            - name: COMMONPLACE_EMBED_MODEL
+              value: "nomic-embed-text"
+            - name: COMMONPLACE_EMBED_DIM
+              value: "768"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/cwb
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: commonplace-data
