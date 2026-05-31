@@ -147,6 +147,33 @@ func (s *Service) Delete(ctx context.Context, org, caller, id string) error {
 	return tx.Commit()
 }
 
+// DeleteByOrg removes ALL entries for an org (and their fts/vec rows). Used by
+// the cross-org wipe (NEX-402). Idempotent: zero entries → (0, nil).
+func (s *Service) DeleteByOrg(ctx context.Context, org string) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("commonplace: DeleteByOrg: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM entry_fts WHERE entry_id IN (SELECT id FROM entry WHERE org=?)`, org); err != nil {
+		return 0, fmt.Errorf("commonplace: DeleteByOrg: fts: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM entry_vec WHERE entry_id IN (SELECT id FROM entry WHERE org=?)`, org); err != nil {
+		return 0, fmt.Errorf("commonplace: DeleteByOrg: vec: %w", err)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM entry WHERE org=?`, org)
+	if err != nil {
+		return 0, fmt.Errorf("commonplace: DeleteByOrg: entry: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commonplace: DeleteByOrg: commit: %w", err)
+	}
+	return int(n), nil
+}
+
 // ownedEntry loads an entry and verifies caller ownership. Returns
 // ErrNotFound if it isn't visible, ErrForbidden if visible-but-not-owned.
 func (s *Service) ownedEntry(ctx context.Context, org, caller, id string) (Entry, error) {
