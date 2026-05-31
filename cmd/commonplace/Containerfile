@@ -1,0 +1,19 @@
+# commonplace container — pure-Go static binary on scratch.
+# Build from the commonplace repo root:
+#   podman build -f cmd/commonplace/Containerfile -t commonplace:dev .
+#   podman save commonplace:dev | sudo k3s ctr images import -
+#
+# Runtime config via env (see cmd/commonplace/main.go):
+#   COMMONPLACE_ADDR, COMMONPLACE_DB, COMMONPLACE_EMBED_{PROVIDER,URL,MODEL,DIM}
+FROM docker.io/library/golang:1.26 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/commonplace ./cmd/commonplace
+
+FROM scratch
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /out/commonplace /commonplace
+EXPOSE 8101
+ENTRYPOINT ["/commonplace"]
