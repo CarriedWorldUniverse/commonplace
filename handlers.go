@@ -3,6 +3,7 @@ package commonplace
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 )
 
 // Handler returns the service's HTTP handler.
@@ -12,6 +13,7 @@ func (s *Service) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "commonplace"})
 	})
 	mux.HandleFunc("POST /api/knowledge", s.handleStore)
+	mux.HandleFunc("GET /api/knowledge/search", s.handleSearch)
 	return mux
 }
 
@@ -57,4 +59,36 @@ func (s *Service) handleStore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, entry)
+}
+
+func (s *Service) handleSearch(w http.ResponseWriter, r *http.Request) {
+	id := identityFromRequest(r)
+	if id.Subject == "" || id.Org == "" {
+		writeErr(w, http.StatusUnauthorized, "missing identity")
+		return
+	}
+	if !id.hasScope(scopeRead) {
+		writeErr(w, http.StatusForbidden, "knowledge:read required")
+		return
+	}
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		writeErr(w, http.StatusBadRequest, "q required")
+		return
+	}
+	topK := 10
+	if v := r.URL.Query().Get("top_k"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			topK = n
+		}
+	}
+	hits, err := s.Search(r.Context(), SearchInput{Org: id.Org, Caller: id.Subject, Query: q, TopK: topK})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if hits == nil {
+		hits = []Hit{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"hits": hits})
 }
