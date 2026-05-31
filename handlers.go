@@ -2,6 +2,7 @@ package commonplace
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 )
@@ -14,6 +15,10 @@ func (s *Service) Handler() http.Handler {
 	})
 	mux.HandleFunc("POST /api/knowledge", s.handleStore)
 	mux.HandleFunc("GET /api/knowledge/search", s.handleSearch)
+	mux.HandleFunc("GET /api/knowledge", s.handleList)
+	mux.HandleFunc("GET /api/knowledge/{id}", s.handleGet)
+	mux.HandleFunc("PATCH /api/knowledge/{id}", s.handleUpdate)
+	mux.HandleFunc("DELETE /api/knowledge/{id}", s.handleDelete)
 	return mux
 }
 
@@ -91,4 +96,106 @@ func (s *Service) handleSearch(w http.ResponseWriter, r *http.Request) {
 		hits = []Hit{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"hits": hits})
+}
+
+func statusFor(err error) (int, string) {
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return http.StatusNotFound, "not found"
+	case errors.Is(err, ErrForbidden):
+		return http.StatusForbidden, "not owner"
+	default:
+		return http.StatusBadRequest, err.Error()
+	}
+}
+
+func (s *Service) handleGet(w http.ResponseWriter, r *http.Request) {
+	id := identityFromRequest(r)
+	if id.Subject == "" || id.Org == "" {
+		writeErr(w, http.StatusUnauthorized, "missing identity")
+		return
+	}
+	if !id.hasScope(scopeRead) {
+		writeErr(w, http.StatusForbidden, "knowledge:read required")
+		return
+	}
+	e, err := s.Get(r.Context(), id.Org, id.Subject, r.PathValue("id"))
+	if err != nil {
+		code, msg := statusFor(err)
+		writeErr(w, code, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, e)
+}
+
+func (s *Service) handleList(w http.ResponseWriter, r *http.Request) {
+	id := identityFromRequest(r)
+	if id.Subject == "" || id.Org == "" {
+		writeErr(w, http.StatusUnauthorized, "missing identity")
+		return
+	}
+	if !id.hasScope(scopeRead) {
+		writeErr(w, http.StatusForbidden, "knowledge:read required")
+		return
+	}
+	list, err := s.List(r.Context(), id.Org, id.Subject)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if list == nil {
+		list = []Entry{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entries": list})
+}
+
+type updateBody struct {
+	Topic      *string   `json:"topic"`
+	Content    *string   `json:"content"`
+	Visibility *string   `json:"visibility"`
+	Tags       *[]string `json:"tags"`
+}
+
+func (s *Service) handleUpdate(w http.ResponseWriter, r *http.Request) {
+	id := identityFromRequest(r)
+	if id.Subject == "" || id.Org == "" {
+		writeErr(w, http.StatusUnauthorized, "missing identity")
+		return
+	}
+	if !id.hasScope(scopeWrite) {
+		writeErr(w, http.StatusForbidden, "knowledge:write required")
+		return
+	}
+	var body updateBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	e, err := s.Update(r.Context(), id.Org, id.Subject, r.PathValue("id"), UpdateInput{
+		Topic: body.Topic, Content: body.Content, Visibility: body.Visibility, Tags: body.Tags,
+	})
+	if err != nil {
+		code, msg := statusFor(err)
+		writeErr(w, code, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, e)
+}
+
+func (s *Service) handleDelete(w http.ResponseWriter, r *http.Request) {
+	id := identityFromRequest(r)
+	if id.Subject == "" || id.Org == "" {
+		writeErr(w, http.StatusUnauthorized, "missing identity")
+		return
+	}
+	if !id.hasScope(scopeWrite) {
+		writeErr(w, http.StatusForbidden, "knowledge:write required")
+		return
+	}
+	if err := s.Delete(r.Context(), id.Org, id.Subject, r.PathValue("id")); err != nil {
+		code, msg := statusFor(err)
+		writeErr(w, code, msg)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

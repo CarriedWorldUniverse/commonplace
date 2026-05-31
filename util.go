@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+func marshalJSON(v any) ([]byte, error) { return json.Marshal(v) }
+
 func parseTags(s string) []string {
 	var out []string
 	if err := json.Unmarshal([]byte(s), &out); err != nil || out == nil {
