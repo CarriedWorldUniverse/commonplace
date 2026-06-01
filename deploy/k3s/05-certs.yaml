@@ -1,0 +1,39 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata: { name: cwb-selfsigned, namespace: cwb }
+spec: { selfSigned: {} }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: cwb-internal-ca, namespace: cwb }
+spec:
+  isCA: true
+  commonName: cwb-internal-ca
+  secretName: cwb-internal-ca
+  privateKey: { algorithm: ECDSA, size: 256 }
+  issuerRef: { name: cwb-selfsigned, kind: Issuer }
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata: { name: cwb-ca, namespace: cwb }
+spec: { ca: { secretName: cwb-internal-ca } }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: commonplace-tls, namespace: cwb }
+spec:
+  secretName: commonplace-tls
+  dnsNames: [commonplace.cwb.svc, commonplace.cwb.svc.cluster.local, commonplace]
+  usages: [server auth]
+  privateKey: { algorithm: ECDSA, size: 256 }
+  issuerRef: { name: cwb-ca, kind: Issuer }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: interchange-client-tls, namespace: cwb }
+spec:
+  secretName: interchange-client-tls
+  commonName: interchange
+  usages: [client auth]
+  privateKey: { algorithm: ECDSA, size: 256 }
+  issuerRef: { name: cwb-ca, kind: Issuer }
