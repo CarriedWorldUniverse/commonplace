@@ -9,6 +9,7 @@
 //	COMMONPLACE_TLS_CERT        path to server TLS certificate (PEM)
 //	COMMONPLACE_TLS_KEY         path to server TLS private key (PEM)
 //	COMMONPLACE_TLS_CA          path to client CA certificate (PEM) for mTLS
+//	COMMONPLACE_DEV_INSECURE    set to "1" to skip mTLS (local dev only; fatal if unset without certs)
 //	COMMONPLACE_EMBED_PROVIDER  embedding provider (default "ollama")
 //	COMMONPLACE_EMBED_URL       ollama base URL (default http://localhost:11434)
 //	COMMONPLACE_EMBED_MODEL     embedding model (default nomic-embed-text)
@@ -72,15 +73,19 @@ func main() {
 }
 
 // serverOptions builds the gRPC server options. When the TLS env vars are
-// set the server enforces mTLS (RequireAndVerifyClientCert); otherwise it
-// falls back to insecure for local development.
+// set the server enforces mTLS (RequireAndVerifyClientCert). Insecure mode
+// requires an explicit COMMONPLACE_DEV_INSECURE=1 opt-in; missing certs
+// without the opt-in cause a fatal startup error.
 func serverOptions() []grpc.ServerOption {
 	certFile := os.Getenv("COMMONPLACE_TLS_CERT")
 	keyFile := os.Getenv("COMMONPLACE_TLS_KEY")
 	caFile := os.Getenv("COMMONPLACE_TLS_CA")
 	if certFile == "" || keyFile == "" || caFile == "" {
-		log.Printf("commonplace: TLS env vars not set — starting WITHOUT mTLS (dev mode only)")
-		return nil
+		if os.Getenv("COMMONPLACE_DEV_INSECURE") == "1" {
+			log.Printf("commonplace: COMMONPLACE_DEV_INSECURE=1 — starting WITHOUT mTLS (dev only)")
+			return nil
+		}
+		log.Fatalf("commonplace: mTLS required — set COMMONPLACE_TLS_CERT/_KEY/_CA (or COMMONPLACE_DEV_INSECURE=1 for local dev)")
 	}
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)

@@ -55,6 +55,9 @@ func (k *KnowledgeServer) Search(ctx context.Context, r *cwbv1.SearchRequest) (*
 	if !id.hasScope(scopeRead) {
 		return nil, status.Error(codes.PermissionDenied, "missing scope knowledge:read")
 	}
+	if r.Q == "" {
+		return nil, status.Error(codes.InvalidArgument, "q required")
+	}
 	hits, err := k.svc.Search(ctx, SearchInput{
 		Org:    id.Org,
 		Caller: id.Subject,
@@ -182,8 +185,8 @@ func toProtoEntry(e Entry) *cwbv1.Entry {
 		Content:    e.Content,
 		Visibility: e.Visibility,
 		Tags:       e.Tags,
-		CreatedAt:  e.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:  e.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:  e.CreatedAt.Format(time.RFC3339Nano),
+		UpdatedAt:  e.UpdatedAt.Format(time.RFC3339Nano),
 	}
 }
 

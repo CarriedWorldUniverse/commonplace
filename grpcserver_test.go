@@ -267,3 +267,12 @@ func TestGRPC_PurgeOrgRequiresPurgeScope(t *testing.T) {
 		t.Errorf("PurgeOrg without org:purge: code = %v, want PermissionDenied", grpcCode(err))
 	}
 }
+
+func TestGRPC_Search_EmptyQuery_InvalidArgument(t *testing.T) {
+	_, client := newTestGRPCServer(t)
+	ctx := mdCtx("acme", "agent:searcher", scopeRead)
+	_, err := client.Search(ctx, &cwbv1.SearchRequest{Q: "", TopK: 5})
+	if grpcCode(err) != codes.InvalidArgument {
+		t.Errorf("Search with empty q: code = %v, want InvalidArgument", grpcCode(err))
+	}
+}
