@@ -22,41 +22,59 @@ spec:
           image: localhost/commonplace:dev
           imagePullPolicy: Never
           ports:
+            # Port name kept as "http" for Service selector compatibility;
+            # the server now speaks gRPC+mTLS on this port.
             - name: http
               containerPort: 8101
           env:
-            - name: COMMONPLACE_ADDR
+            # gRPC server address — replaces the old COMMONPLACE_ADDR HTTP var.
+            - name: COMMONPLACE_GRPC_ADDR
               value: ":8101"
             - name: COMMONPLACE_DB
               value: "/var/lib/cwb/commonplace.db"
-            # Embedding model reachability. Point at the ollama endpoint
-            # reachable from the cwb namespace. The MVP default model is
-            # nomic-embed-text (dim 768); changing the model is a one-way
-            # door requiring a full re-embed (plan D2).
+            # Embedding model reachability. Points at the ollama host IP
+            # reachable from the cwb namespace (dMon host bridge).
+            # The MVP default model is nomic-embed-text (dim 768); changing
+            # the model is a one-way door requiring a full re-embed.
             - name: COMMONPLACE_EMBED_PROVIDER
               value: "ollama"
             - name: COMMONPLACE_EMBED_URL
-              value: "http://ollama.cwb.svc.cluster.local:11434"
+              value: "http://192.168.143.133:11434"
             - name: COMMONPLACE_EMBED_MODEL
               value: "nomic-embed-text"
             - name: COMMONPLACE_EMBED_DIM
               value: "768"
+            # mTLS — cert-manager populates the commonplace-tls secret
+            # (see 05-certs.yaml). Set COMMONPLACE_DEV_INSECURE=1 to skip
+            # mTLS for local non-cluster development.
+            - name: COMMONPLACE_TLS_CERT
+              value: "/etc/cwb/tls/tls.crt"
+            - name: COMMONPLACE_TLS_KEY
+              value: "/etc/cwb/tls/tls.key"
+            - name: COMMONPLACE_TLS_CA
+              value: "/etc/cwb/tls/ca.crt"
           volumeMounts:
             - name: data
               mountPath: /var/lib/cwb
+            - name: tls
+              mountPath: /etc/cwb/tls
+              readOnly: true
+          # TCP probe — an mTLS gRPC server rejects credential-less HTTP/gRPC
+          # health probes, so we check the port is open instead.
           readinessProbe:
-            httpGet:
-              path: /healthz
-              port: http
+            tcpSocket:
+              port: 8101
             initialDelaySeconds: 2
             periodSeconds: 5
           livenessProbe:
-            httpGet:
-              path: /healthz
-              port: http
+            tcpSocket:
+              port: 8101
             initialDelaySeconds: 10
             periodSeconds: 15
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: commonplace-data
+        - name: tls
+          secret:
+            secretName: commonplace-tls
