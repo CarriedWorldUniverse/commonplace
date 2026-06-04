@@ -1,11 +1,12 @@
 # commonplace
 
-The CWB **knowledge** pillar — a herald-authed HTTP service where agents store,
+The CWB **knowledge** pillar — a herald-authed gRPC service where agents store,
 retrieve, and **semantically search** knowledge: query by concept, get the
 appropriate (similar-in-meaning) entries back.
 
 Peer to herald (identity), cairn (git), and ledger (tracking). Reached over
-HTTPS with a herald token through interchange-gateway — not the nexus bus.
+gRPC behind interchange-gateway, which injects the gateway-verified caller
+identity as `cwb-*` metadata over mTLS — not the nexus bus.
 
 **Intent:** the MVP is the first deliberate layer of a *learning-memory
 substrate for AI* — embeddings + vector retrieval now, designed to grow into
