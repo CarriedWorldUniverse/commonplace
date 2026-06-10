@@ -1,5 +1,7 @@
 # commonplace MVP — Implementation Plan
 
+> **⚠️ HISTORICAL — this plan was executed and commonplace has since migrated to gRPC-only over mTLS.** The `net/http` REST surface described below is no longer the live shape: commonplace serves a `KnowledgeService` (Store / Search) over gRPC, and any HTTP/JSON view is synthesized at interchange's gateway edge. Read this for the *design intent + decisions*, not the transport. To ship anything new (e.g. recall synthesis), implement it as a `KnowledgeService` **RPC** in `grpcserver.go`, not a `net/http` handler.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build commonplace — the CWB knowledge pillar: a herald-authed HTTP service where aspects store/retrieve/semantically-search knowledge (query by concept, appropriate entries surface). The neural-semantic foundation (embeddings + vector + hybrid keyword) — rung 1 of a learning-memory substrate, built to grow toward learning-paths but not implementing them.
